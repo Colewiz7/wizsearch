@@ -8,9 +8,15 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+pub mod giphy;
+pub mod imgur;
 pub mod klipy;
+pub mod kym;
 pub mod myinstants;
 pub mod pexels;
+pub mod reddit;
+pub mod tenor;
+pub mod ytsearch;
 
 // ---------- core enums ----------
 
@@ -20,15 +26,17 @@ pub enum AssetType {
     Audio,
     Gif,
     Sticker,
+    Image,
     Video,
     GreenScreen,
 }
 
 impl AssetType {
-    pub const ALL: [AssetType; 5] = [
+    pub const ALL: [AssetType; 6] = [
         AssetType::Audio,
         AssetType::Gif,
         AssetType::Sticker,
+        AssetType::Image,
         AssetType::Video,
         AssetType::GreenScreen,
     ];
@@ -38,6 +46,7 @@ impl AssetType {
             AssetType::Audio => "audio",
             AssetType::Gif => "gif",
             AssetType::Sticker => "sticker",
+            AssetType::Image => "image",
             AssetType::Video => "video",
             AssetType::GreenScreen => "green_screen",
         }
@@ -193,10 +202,17 @@ pub trait SourceHttp: Send + Sync {
     async fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, SourceError>;
 }
 
+#[async_trait]
 pub trait SourceContext: Send + Sync {
     fn http(&self) -> &dyn SourceHttp;
     /// per-user credential from the OS keychain, read-only. None if unset.
     fn credential(&self) -> Option<String>;
+    /// read-only access to this source's own settings: config("subreddits")
+    /// reads sources.<id>.subreddits from the registry
+    fn config(&self, key: &str) -> Option<String>;
+    /// metadata-only yt-dlp search (`ytsearchN:`), run by the host. Returns the
+    /// --dump-single-json output. Sources never touch the binary themselves.
+    async fn ytdlp_search_json(&self, query: &str, count: u32) -> Result<String, SourceError>;
 }
 
 // ---------- descriptor + trait ----------
@@ -213,6 +229,11 @@ pub struct SourceDescriptor {
     /// hosts (suffix match) that previews and fetch plans may touch
     pub allowed_hosts: &'static [&'static str],
     pub default_rate_limit_per_min: u32,
+    /// default for the generated sources.<id>.enabled setting (opt-in sources
+    /// like GIPHY ship disabled)
+    pub default_enabled: bool,
+    /// default for the generated sources.<id>.timeout_ms setting (yt-dlp is slow)
+    pub default_timeout_ms: u32,
     /// MUST be empty. Asserted at startup: WizSearch never ships a developer key.
     pub embedded_credential: &'static str,
 }

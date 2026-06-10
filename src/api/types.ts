@@ -1,6 +1,6 @@
 // Mirrors of the Rust DTOs (serde snake_case).
 
-export type AssetType = "audio" | "gif" | "sticker" | "video" | "green_screen";
+export type AssetType = "audio" | "gif" | "sticker" | "image" | "video" | "green_screen";
 export type PreviewKind = "audio_stream" | "video_loop" | "animated_image" | "poster_loop";
 
 export interface FetchPlan {
@@ -111,6 +111,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   audio: "Sounds",
   gif: "GIFs",
   sticker: "Stickers",
+  image: "Images",
   video: "Videos",
   green_screen: "Green screens",
 };

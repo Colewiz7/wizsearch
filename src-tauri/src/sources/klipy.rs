@@ -19,6 +19,8 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     key_help_url: "https://klipy.com/developers",
     allowed_hosts: &["klipy.com", "klipy.co", "klipy.media"],
     default_rate_limit_per_min: 60,
+    default_enabled: true,
+    default_timeout_ms: 8000,
     embedded_credential: "",
 };
 

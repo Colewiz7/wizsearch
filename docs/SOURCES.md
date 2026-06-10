@@ -18,20 +18,22 @@ Strategy: a few sources done well, shipping NO keys of any kind. Per-user free k
   validate every preview URL and fetch plan, `default_rate_limit_per_min`, and
   `embedded_credential` which MUST stay `""` (asserted at startup).
 
-## Shipped in M1
+## Shipped
 | Source | Mode | Assets | Auth | Notes |
 |---|---|---|---|---|
 | myinstants | scrape | audio | none | No API. Parse search pages for `play('/media/sounds/..')`. License unclear (mostly third-party clips); labeled as such. |
-| KLIPY | API | gif, sticker, video (clips) | per-user free key in URL path | Tenor is dead, GIPHY is paid; KLIPY is the GIF/clip source. Defensive JSON parsing of `data.data[].file.{size}.{format}`. MP4/WebP previews preferred over raw GIF. |
-| Pexels | API | video, green_screen | per-user free key (Authorization header) | `/videos/search`; green-screen-only filter augments the query with "green screen". Pexels License, attribution captured. |
+| KLIPY | API | gif, sticker, video (clips) | per-user free key in URL path | Defensive JSON parsing of `data.data[].file.{size}.{format}`. MP4/WebP previews over raw GIF. |
+| Tenor | API v2 | gif, sticker | per-user free Google Cloud key | v1 is dead; v2 is `tenor.googleapis.com/v2/search` with opaque `pos` cursor. Stickers via `searchfilter=sticker`. |
+| GIPHY | API | gif, sticker | per-user key, **disabled by default** | Opt-in (`default_enabled: false`); flip it on in Settings after adding a key. |
+| Reddit | public JSON | gif, image, video, green_screen | none | Searches a comma-separated subreddit list (a setting). GIFs fetch reddit's own mirrors; videos collect via yt-dlp so v.redd.it audio is merged back in. NSFW filtered. |
+| Imgur | API v3 | gif, image, video | per-user free Client-ID | `gallery/search`; albums unwrap to their first image; `<id>m.jpg` thumbnail trick. |
+| Know Your Meme | scrape | image, gif | none | Image search grid; masonry rendition swapped to `/original/`. Cloudflare may block; that's an error chip. |
+| YouTube | yt-dlp | video | none | Metadata-only discovery (`ytsearchN:` + `--flat-playlist --dump-single-json`) through `ctx.ytdlp_search_json` (host runs the binary, source stays pure). Collect = YtDlp fetch plan. 30s default timeout. |
+| Pexels | API | video, green_screen | per-user free key (Authorization header) | `/videos/search`; green-screen-only filter augments the query. Pexels License, attribution captured. |
 
 ## Planned next (same trait, no core changes)
 - Pixabay (per-user key; video/green screens), Freesound (per-user token; SFX with
-  `preview-(hq|lq)-(mp3|ogg)` preview URLs), Mixkit (scrape; green screens),
-  yt-dlp short-video discovery (no key; `ytsearchN:` with
-  `--skip-download --flat-playlist --dump-single-json`, metadata only, downloads stay
-  user-explicit), opt-in GIPHY (per-user key, disabled by default — registry already
-  supports it; add the source module when wired).
+  `preview-(hq|lq)-(mp3|ogg)` preview URLs), Mixkit (scrape; green screens).
 
 ## Adding a source (checklist)
 1. New module in `src-tauri/src/sources/`, implement `SearchSource`, static

@@ -13,7 +13,7 @@ import { localStreamUrl } from "../api/stream";
 import type { CollectedAsset } from "../api/types";
 import { playExclusive } from "../preview/audioBus";
 
-const TYPE_FILTERS = ["all", "audio", "gif", "sticker", "video", "green_screen"];
+const TYPE_FILTERS = ["all", "audio", "gif", "sticker", "image", "video", "green_screen"];
 
 export function CollectionView() {
   const [query, setQuery] = useState("");

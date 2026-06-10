@@ -24,6 +24,7 @@ const TYPE_FILTERS: (AssetType | "all")[] = [
   "audio",
   "gif",
   "sticker",
+  "image",
   "video",
   "green_screen",
 ];

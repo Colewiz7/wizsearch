@@ -70,14 +70,54 @@ impl SourceHttp for HostHttp {
 struct HostContext {
     http: HostHttp,
     credential: Option<String>,
+    source_id: &'static str,
+    settings: Arc<SettingsStore>,
+    app_data: std::path::PathBuf,
+    timeout: Duration,
 }
 
+#[async_trait]
 impl SourceContext for HostContext {
     fn http(&self) -> &dyn SourceHttp {
         &self.http
     }
     fn credential(&self) -> Option<String> {
         self.credential.clone()
+    }
+    fn config(&self, key: &str) -> Option<String> {
+        let v = self
+            .settings
+            .get(&format!("sources.{}.{key}", self.source_id))
+            .ok()?;
+        v.as_str().map(String::from)
+    }
+    async fn ytdlp_search_json(&self, query: &str, count: u32) -> Result<String, SourceError> {
+        let bin = crate::sidecars::tool_path(&self.app_data, "yt-dlp");
+        if !bin.exists() {
+            return Err(SourceError::Network(
+                "yt-dlp is not installed yet (Settings > Bundled tools)".into(),
+            ));
+        }
+        // metadata only, never a download; rate limited like everything else
+        self.http.limiter.acquire().await;
+        let count = count.clamp(1, 25);
+        let run = tokio::process::Command::new(&bin)
+            .arg(format!("ytsearch{count}:{query}"))
+            .arg("--skip-download")
+            .arg("--flat-playlist")
+            .arg("--dump-single-json")
+            .arg("--no-warnings")
+            .output();
+        let output = tokio::time::timeout(self.timeout, run)
+            .await
+            .map_err(|_| SourceError::Network("yt-dlp timed out".into()))?
+            .map_err(|e| SourceError::Network(e.to_string()))?;
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            let tail: String = err.lines().last().unwrap_or("unknown error").to_string();
+            return Err(SourceError::Network(format!("yt-dlp: {tail}")));
+        }
+        String::from_utf8(output.stdout).map_err(|e| SourceError::Parse(e.to_string()))
     }
 }
 
@@ -92,6 +132,7 @@ pub struct SearchHost {
     client: reqwest::Client,
     sources: Vec<RegisteredSource>,
     settings: Arc<SettingsStore>,
+    app_data: std::path::PathBuf,
     generation: AtomicU64,
     accum: tokio::sync::Mutex<Accum>,
 }
@@ -133,7 +174,11 @@ pub struct SourceInfo {
 }
 
 impl SearchHost {
-    pub fn new(settings: Arc<SettingsStore>, sources: Vec<Arc<dyn SearchSource>>) -> Self {
+    pub fn new(
+        settings: Arc<SettingsStore>,
+        app_data: std::path::PathBuf,
+        sources: Vec<Arc<dyn SearchSource>>,
+    ) -> Self {
         let registered = sources
             .into_iter()
             .map(|source| {
@@ -152,9 +197,23 @@ impl SearchHost {
             client: reqwest::Client::new(),
             sources: registered,
             settings,
+            app_data,
             generation: AtomicU64::new(0),
             accum: tokio::sync::Mutex::new(Accum::default()),
         }
+    }
+
+    /// per-source timeout (a setting; yt-dlp needs way longer than http APIs)
+    fn timeout_for(&self, d: &SourceDescriptor) -> Duration {
+        Duration::from_millis(self.settings.i64_or(
+            &format!("sources.{}.timeout_ms", d.id),
+            d.default_timeout_ms as i64,
+        ) as u64)
+    }
+
+    fn enabled(&self, d: &SourceDescriptor) -> bool {
+        self.settings
+            .bool_or(&format!("sources.{}.enabled", d.id), d.default_enabled)
     }
 
     pub fn descriptors(&self) -> Vec<&'static SourceDescriptor> {
@@ -182,9 +241,7 @@ impl SearchHost {
                 asset_types: d.asset_types.to_vec(),
                 requires_key: d.requires_key,
                 has_key,
-                enabled: self
-                    .settings
-                    .bool_or(&format!("sources.{}.enabled", d.id), true),
+                enabled: self.enabled(d),
             });
         }
         out
@@ -202,6 +259,10 @@ impl SearchHost {
             .flatten();
         HostContext {
             credential,
+            source_id: d.id,
+            settings: self.settings.clone(),
+            app_data: self.app_data.clone(),
+            timeout,
             http: HostHttp {
                 client: self.client.clone(),
                 limiter: reg.limiter.clone(),
@@ -220,7 +281,6 @@ impl SearchHost {
         asset_types: Vec<crate::sources::AssetType>,
     ) -> u64 {
         let search_id = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let timeout = Duration::from_millis(self.settings.i64_or("search.timeout_ms", 8000) as u64);
         let page_size = self.settings.i64_or("search.page_size", 24) as u32;
 
         {
@@ -231,9 +291,7 @@ impl SearchHost {
             };
             for r in &self.sources {
                 let d = r.source.descriptor();
-                let enabled = self
-                    .settings
-                    .bool_or(&format!("sources.{}.enabled", d.id), true);
+                let enabled = self.enabled(d);
                 acc.statuses.insert(
                     d.id.to_string(),
                     SourceStatus {
@@ -250,12 +308,10 @@ impl SearchHost {
 
         for reg in &self.sources {
             let d = reg.source.descriptor();
-            if !self
-                .settings
-                .bool_or(&format!("sources.{}.enabled", d.id), true)
-            {
+            if !self.enabled(d) {
                 continue;
             }
+            let timeout = self.timeout_for(d);
             let req = SearchRequest {
                 query: query.clone(),
                 asset_types: asset_types.clone(),
@@ -338,7 +394,7 @@ impl SearchHost {
         let reg = self
             .find(source_id)
             .ok_or_else(|| SourceError::Parse(format!("unknown source {source_id}")))?;
-        let timeout = Duration::from_millis(self.settings.i64_or("search.timeout_ms", 8000) as u64);
+        let timeout = self.timeout_for(reg.source.descriptor());
         let page_size = self.settings.i64_or("search.page_size", 24) as u32;
         let ctx = self.make_context(reg, timeout).await;
         let req = SearchRequest {

@@ -92,7 +92,8 @@ pub async fn collect_item(
     .map_err(|e| e.to_string())?;
     let _ = app.emit("collect://started", &item.id);
 
-    let downloaded = Collection::download_plan(&state.client, &item.fetch_plan, &dir).await;
+    let downloaded =
+        Collection::download_plan(&state.client, &item.fetch_plan, &dir, &state.app_data).await;
     let (tmp, sha256, bytes, mime) = match downloaded {
         Ok(v) => v,
         Err(e) => {

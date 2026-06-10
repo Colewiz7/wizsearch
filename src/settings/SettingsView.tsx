@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
 import {
   secretClear,
@@ -190,7 +191,15 @@ function SecretField({ settingKey, helpUrl }: { settingKey: string; helpUrl: str
         </button>
       )}
       {helpUrl && (
-        <a href={helpUrl} target="_blank" rel="noreferrer" className="key-help">
+        <a
+          href={helpUrl}
+          className="key-help"
+          onClick={(e) => {
+            // webviews don't follow target=_blank; open the system browser
+            e.preventDefault();
+            void openUrl(helpUrl);
+          }}
+        >
           get a key
         </a>
       )}

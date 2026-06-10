@@ -159,6 +159,8 @@ mod tests {
         key_help_url: "",
         allowed_hosts: &["example.com"],
         default_rate_limit_per_min: 10,
+        default_enabled: true,
+        default_timeout_ms: 8000,
         embedded_credential: "",
     };
 

@@ -241,13 +241,6 @@ pub fn build_registry(
     let mut defs = vec![
         // --- search ---
         SettingDef {
-            key: "search.timeout_ms".into(),
-            label: "Source timeout (ms)".into(),
-            description: "How long to wait for each source before showing results without it.".into(),
-            category: "Search".into(),
-            kind: SettingKind::Int { default: 8000, min: 1000, max: 60000 },
-        },
-        SettingDef {
             key: "search.page_size".into(),
             label: "Results per source".into(),
             description: "How many results to ask each source for per page.".into(),
@@ -381,8 +374,36 @@ pub fn build_registry(
             label: format!("Enable {}", d.name),
             description: format!("Include {} when searching.", d.name),
             category: "Sources".into(),
-            kind: SettingKind::Bool { default: true },
+            kind: SettingKind::Bool {
+                default: d.default_enabled,
+            },
         });
+        defs.push(SettingDef {
+            key: format!("sources.{}.timeout_ms", d.id),
+            label: format!("{} timeout (ms)", d.name),
+            description: format!(
+                "How long to wait for {} before showing results without it.",
+                d.name
+            ),
+            category: "Sources".into(),
+            kind: SettingKind::Int {
+                default: d.default_timeout_ms as i64,
+                min: 1000,
+                max: 120000,
+            },
+        });
+        if d.id == "reddit" {
+            defs.push(SettingDef {
+                key: "sources.reddit.subreddits".into(),
+                label: "Subreddits to search".into(),
+                description: "Comma-separated list of subreddits Reddit searches across.".into(),
+                category: "Sources".into(),
+                kind: SettingKind::Text {
+                    default: crate::sources::reddit::DEFAULT_SUBREDDITS.into(),
+                    placeholder: "memes,gifs,reactiongifs".into(),
+                },
+            });
+        }
         defs.push(SettingDef {
             key: format!("sources.{}.rate_limit_per_min", d.id),
             label: format!("{} rate limit (req/min)", d.name),
@@ -426,7 +447,7 @@ mod tests {
     #[test]
     fn defaults_come_back_without_backend() {
         let s = store();
-        assert_eq!(s.i64_or("search.timeout_ms", 0), 8000);
+        assert_eq!(s.i64_or("search.page_size", 0), 24);
         assert_eq!(s.string_or("search.merge_strategy", ""), "round_robin");
         assert!(s.bool_or("preview.hover_to_play", false));
     }
@@ -434,7 +455,7 @@ mod tests {
     #[test]
     fn validation_rejects_bad_values() {
         let s = store();
-        assert!(s.set("search.timeout_ms", json!(50)).is_err()); // below min
+        assert!(s.set("search.page_size", json!(1)).is_err()); // below min
         assert!(s.set("search.merge_strategy", json!("randomly")).is_err());
         assert!(s.set("search.merge_strategy", json!("grouped")).is_ok());
         assert!(s.set("nope.nope", json!(true)).is_err());

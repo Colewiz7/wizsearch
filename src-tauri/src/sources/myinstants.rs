@@ -20,6 +20,8 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     key_help_url: "",
     allowed_hosts: &["myinstants.com"],
     default_rate_limit_per_min: 20,
+    default_enabled: true,
+    default_timeout_ms: 8000,
     embedded_credential: "",
 };
 

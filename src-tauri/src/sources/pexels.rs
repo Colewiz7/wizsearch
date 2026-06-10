@@ -18,6 +18,8 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     key_help_url: "https://www.pexels.com/api/",
     allowed_hosts: &["pexels.com"],
     default_rate_limit_per_min: 50,
+    default_enabled: true,
+    default_timeout_ms: 8000,
     embedded_credential: "",
 };
 

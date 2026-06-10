@@ -15,7 +15,10 @@ use collection::Db;
 use commands::AppState;
 use search::SearchHost;
 use settings::SettingsStore;
-use sources::{klipy::Klipy, myinstants::MyInstants, pexels::Pexels, SearchSource};
+use sources::{
+    giphy::Giphy, imgur::Imgur, klipy::Klipy, kym::Kym, myinstants::MyInstants, pexels::Pexels,
+    reddit::Reddit, tenor::Tenor, ytsearch::YtSearch, SearchSource,
+};
 
 pub fn run() {
     tauri::Builder::default()
@@ -34,9 +37,18 @@ pub fn run() {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
 
-            // a few done well; more sources slot in here behind the same trait
-            let source_list: Vec<Arc<dyn SearchSource>> =
-                vec![Arc::new(MyInstants), Arc::new(Klipy), Arc::new(Pexels)];
+            // every source is one module behind the same trait
+            let source_list: Vec<Arc<dyn SearchSource>> = vec![
+                Arc::new(MyInstants),
+                Arc::new(Klipy),
+                Arc::new(Tenor),
+                Arc::new(Giphy),
+                Arc::new(Reddit),
+                Arc::new(Imgur),
+                Arc::new(Kym),
+                Arc::new(YtSearch),
+                Arc::new(Pexels),
+            ];
             let descriptors: Vec<_> = source_list.iter().map(|s| s.descriptor()).collect();
 
             // hard invariant: no developer key ever ships in a build
@@ -53,7 +65,11 @@ pub fn run() {
             )));
             settings.attach_backend(Box::new(db.clone()))?;
 
-            let search = Arc::new(SearchHost::new(settings.clone(), source_list));
+            let search = Arc::new(SearchHost::new(
+                settings.clone(),
+                app_data.clone(),
+                source_list,
+            ));
             let client = reqwest::Client::new();
 
             // loopback media server: webkitgtk's GStreamer path can't read

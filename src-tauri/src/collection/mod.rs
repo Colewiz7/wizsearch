@@ -159,16 +159,17 @@ impl Collection {
         client: &reqwest::Client,
         plan: &FetchPlan,
         collection_dir: &Path,
+        app_data: &Path,
     ) -> Result<(PathBuf, String, u64, Option<String>), CollectionError> {
-        let FetchPlan::HttpGet {
-            url,
-            headers,
-            filename_hint,
-        } = plan
-        else {
-            return Err(CollectionError::Download(
-                "yt-dlp plans are not supported yet".into(),
-            ));
+        let (url, headers, filename_hint) = match plan {
+            FetchPlan::HttpGet {
+                url,
+                headers,
+                filename_hint,
+            } => (url, headers, filename_hint),
+            FetchPlan::YtDlp { url, .. } => {
+                return Self::download_via_ytdlp(url, collection_dir, app_data).await;
+            }
         };
 
         let tmp_dir = collection_dir.join(".tmp");
@@ -215,6 +216,55 @@ impl Collection {
         let sha256 = hex::encode(hasher.finalize());
         let _ = filename_hint; // final naming happens in store_collected
         Ok((tmp_path, sha256, bytes, mime))
+    }
+
+    /// Collect a video through the yt-dlp sidecar (explicit user action only;
+    /// the plan URL was already allowlist-validated). Hashes the finished file.
+    async fn download_via_ytdlp(
+        url: &str,
+        collection_dir: &Path,
+        app_data: &Path,
+    ) -> Result<(PathBuf, String, u64, Option<String>), CollectionError> {
+        let bin = crate::sidecars::tool_path(app_data, "yt-dlp");
+        if !bin.exists() {
+            return Err(CollectionError::Download(
+                "yt-dlp is not installed yet (Settings > Bundled tools)".into(),
+            ));
+        }
+        let tmp_dir = collection_dir.join(".tmp");
+        tokio::fs::create_dir_all(&tmp_dir).await?;
+        let tmp_path = tmp_dir.join(format!("{}.mp4", uuid::Uuid::new_v4()));
+
+        // args built programmatically, no shell
+        let mut cmd = tokio::process::Command::new(&bin);
+        cmd.arg(url)
+            .arg("--no-playlist")
+            .arg("-f")
+            .arg("bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/b")
+            .arg("--merge-output-format")
+            .arg("mp4")
+            .arg("--no-warnings")
+            .arg("-o")
+            .arg(&tmp_path);
+        let ffmpeg_dir = crate::sidecars::sidecar_dir(app_data);
+        if ffmpeg_dir.join("ffmpeg").exists() || ffmpeg_dir.join("ffmpeg.exe").exists() {
+            cmd.arg("--ffmpeg-location").arg(&ffmpeg_dir);
+        }
+        let output = cmd
+            .output()
+            .await
+            .map_err(|e| CollectionError::Download(e.to_string()))?;
+        if !output.status.success() || !tmp_path.exists() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            let tail = err.lines().last().unwrap_or("unknown error").to_string();
+            return Err(CollectionError::Download(format!("yt-dlp: {tail}")));
+        }
+
+        // hash the finished file
+        let bytes_vec = tokio::fs::read(&tmp_path).await?;
+        let sha256 = hex::encode(Sha256::digest(&bytes_vec));
+        let bytes = bytes_vec.len() as u64;
+        Ok((tmp_path, sha256, bytes, Some("video/mp4".to_string())))
     }
 
     /// Move the downloaded temp file into place and record everything.

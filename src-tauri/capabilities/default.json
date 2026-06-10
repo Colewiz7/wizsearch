@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "opener:default",
     "opener:allow-reveal-item-in-dir",
     "clipboard-manager:allow-write-text",
     "drag:default"
