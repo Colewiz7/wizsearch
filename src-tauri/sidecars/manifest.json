@@ -1,0 +1,45 @@
+{
+  "comment": "Pinned sidecar builds. Hashes come from each project's official release checksum files (yt-dlp SHA2-256SUMS, BtbN checksums.sha256). Update url+sha256 together; the app refuses to install anything unpinned.",
+  "tools": [
+    {
+      "name": "yt-dlp",
+      "version": "2026.06.09",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/yt-dlp_linux",
+          "sha256": "bf8aac79b72287a6d2043074415132558b43743a8f9461a22b0141e90f16ce66",
+          "archive": "binary"
+        },
+        "windows-x86_64": {
+          "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/yt-dlp.exe",
+          "sha256": "3a48cb955d55c8821b60ccbdbbc6f61bc958f2f3d3b7ad5eaf3d83a543293a27",
+          "archive": "binary"
+        }
+      }
+    },
+    {
+      "name": "ffmpeg",
+      "version": "n8.1.1-11-ge4c7fbf6c0",
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-10-17-02/ffmpeg-n8.1.1-11-ge4c7fbf6c0-linux64-gpl-8.1.tar.xz",
+          "sha256": "e3cf4681c83766366f8f161af763ae988c822304cbd7e81e2ec0b2eebc65f64c",
+          "archive": "tar.xz",
+          "extract": {
+            "ffmpeg": "bin/ffmpeg",
+            "ffprobe": "bin/ffprobe"
+          }
+        },
+        "windows-x86_64": {
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-10-17-02/ffmpeg-n8.1.1-11-ge4c7fbf6c0-win64-gpl-8.1.zip",
+          "sha256": "b2938943fcc19bc9b90fd1e5c1f437fb46f3889eef5dbbef4ab4808ac6866830",
+          "archive": "zip",
+          "extract": {
+            "ffmpeg": "bin/ffmpeg.exe",
+            "ffprobe": "bin/ffprobe.exe"
+          }
+        }
+      }
+    }
+  ]
+}

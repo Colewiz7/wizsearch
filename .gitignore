@@ -1,0 +1,61 @@
+# --- WizSearch .gitignore ---
+
+# Collected media never enters git. The default collection dir (~/WizSearch) is
+# outside the repo; these cover anyone pointing collection.dir inside it.
+# (root-anchored so they don't eat the collection source modules)
+/collection/
+/collected/
+/media/
+/thumbs/
+/previews/
+/app-data/
+!src/collection/
+!src-tauri/src/collection/
+
+# databases
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# keys / secrets (runtime secrets live in the OS keychain, never in files)
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# managed sidecar binaries
+sidecars-bin/
+bin/yt-dlp*
+bin/ffmpeg*
+bin/ffprobe*
+
+# Rust
+/target
+/src-tauri/target
+**/*.rs.bk
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Tauri build output
+/src-tauri/gen/
+/src-tauri/WixTools/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+logs/
+*.log
