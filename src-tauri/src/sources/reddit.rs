@@ -1,6 +1,7 @@
-//! Reddit — meme subs via the public search JSON, no key. Which subreddits to
-//! search is a setting (sources.reddit.subreddits). GIFs/images fetch from
-//! reddit's own mirrors; videos collect through yt-dlp so they keep audio.
+//! Reddit — meme subs via app-only OAuth (reddit blocks anonymous clients, so
+//! the user pastes their own free script-app client_id:client_secret). Which
+//! subreddits to search is a setting (sources.reddit.subreddits). GIFs/images
+//! fetch from reddit's own mirrors; videos collect through yt-dlp for audio.
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -22,8 +23,9 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
         AssetType::Video,
         AssetType::GreenScreen,
     ],
-    requires_key: false,
-    key_help_url: "",
+    requires_key: true,
+    key_help_url: "https://www.reddit.com/prefs/apps",
+    key_hint: "Reddit blocks anonymous clients. Create a free 'script' app at reddit.com/prefs/apps and paste client_id:client_secret.",
     allowed_hosts: &["reddit.com", "redd.it", "redditmedia.com"],
     default_rate_limit_per_min: 30,
     default_enabled: true,
@@ -48,6 +50,34 @@ impl SearchSource for Reddit {
             return Ok(SearchPage::empty());
         }
 
+        // reddit killed anonymous json in 2023; app-only oauth with the user's
+        // own script-app credentials is the reliable path
+        let cred = ctx.credential().ok_or(SourceError::MissingCredential)?;
+        let Some((client_id, client_secret)) = cred.split_once(':') else {
+            return Err(SourceError::AuthRejected(
+                "expected client_id:client_secret".into(),
+            ));
+        };
+        let basic = format!(
+            "Basic {}",
+            b64(format!("{client_id}:{client_secret}").as_bytes())
+        );
+        let token_resp = ctx
+            .http()
+            .post_form(
+                "https://www.reddit.com/api/v1/access_token",
+                &[("Authorization", &basic)],
+                &[("grant_type", "client_credentials")],
+            )
+            .await?
+            .ok()?;
+        let token = token_resp.json()?["access_token"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| {
+                SourceError::AuthRejected("reddit rejected the client_id:client_secret".into())
+            })?;
+
         let subs = ctx
             .config("subreddits")
             .unwrap_or_else(|| DEFAULT_SUBREDDITS.to_string());
@@ -62,7 +92,7 @@ impl SearchSource for Reddit {
         }
 
         let mut url = format!(
-            "https://www.reddit.com/r/{multi}/search.json?q={}&restrict_sr=1&limit={}&sort=relevance&raw_json=1",
+            "https://oauth.reddit.com/r/{multi}/search?q={}&restrict_sr=1&limit={}&sort=relevance&raw_json=1",
             urlencode(&req.query),
             req.page_size.clamp(1, 50),
         );
@@ -70,7 +100,12 @@ impl SearchSource for Reddit {
             url.push_str(&format!("&after={}", urlencode(after)));
         }
 
-        let resp = ctx.http().get(&url, &[]).await?.ok()?;
+        let bearer = format!("Bearer {token}");
+        let resp = ctx
+            .http()
+            .get(&url, &[("Authorization", &bearer)])
+            .await?
+            .ok()?;
         let json = resp.json()?;
         let items = parse_listing(&json, &req.wanted(DESCRIPTOR.asset_types));
         let next_cursor = json["data"]["after"]
@@ -188,6 +223,33 @@ fn parse_listing(json: &Value, wanted: &[AssetType]) -> Vec<ResultItem> {
             attribution: Some(format!("r/{sub}")),
             origin_url: Some(origin),
             fetch_plan: plan,
+        });
+    }
+    out
+}
+
+/// standard base64 with padding, enough for http basic auth
+fn b64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
         });
     }
     out

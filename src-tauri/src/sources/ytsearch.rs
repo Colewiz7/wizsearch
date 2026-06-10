@@ -17,6 +17,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Video],
     requires_key: false,
     key_help_url: "",
+    key_hint: "",
     allowed_hosts: &[
         "youtube.com",
         "youtu.be",

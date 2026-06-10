@@ -16,6 +16,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Video, AssetType::GreenScreen],
     requires_key: true,
     key_help_url: "https://www.pexels.com/api/",
+    key_hint: "",
     allowed_hosts: &["pexels.com"],
     default_rate_limit_per_min: 50,
     default_enabled: true,

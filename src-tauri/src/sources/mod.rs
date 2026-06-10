@@ -200,6 +200,14 @@ impl HttpResponse {
 #[async_trait]
 pub trait SourceHttp: Send + Sync {
     async fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, SourceError>;
+    /// form-encoded POST, for oauth token exchanges. Same rate limiting and
+    /// allowlist checks as get.
+    async fn post_form(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        form: &[(&str, &str)],
+    ) -> Result<HttpResponse, SourceError>;
 }
 
 #[async_trait]
@@ -226,6 +234,8 @@ pub struct SourceDescriptor {
     pub requires_key: bool,
     /// where the user gets a free key, shown in Settings
     pub key_help_url: &'static str,
+    /// optional Settings description for the key field (format hints etc.)
+    pub key_hint: &'static str,
     /// hosts (suffix match) that previews and fetch plans may touch
     pub allowed_hosts: &'static [&'static str],
     pub default_rate_limit_per_min: u32,

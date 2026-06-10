@@ -419,13 +419,18 @@ pub fn build_registry(
             },
         });
         if d.requires_key {
+            let description = if d.key_hint.is_empty() {
+                format!(
+                    "Your personal free {} key. Stored in the OS keychain, never on disk.",
+                    d.name
+                )
+            } else {
+                format!("{} Stored in the OS keychain, never on disk.", d.key_hint)
+            };
             defs.push(SettingDef {
                 key: crate::security::credential_key(d.id),
                 label: format!("{} API key", d.name),
-                description: format!(
-                    "Your personal free {} key. Stored in the OS keychain, never on disk.",
-                    d.name
-                ),
+                description,
                 category: "Sources".into(),
                 kind: SettingKind::Secret {
                     help_url: d.key_help_url.to_string(),

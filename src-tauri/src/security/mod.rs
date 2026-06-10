@@ -157,6 +157,7 @@ mod tests {
         asset_types: &[AssetType::Audio],
         requires_key: false,
         key_help_url: "",
+        key_hint: "",
         allowed_hosts: &["example.com"],
         default_rate_limit_per_min: 10,
         default_enabled: true,

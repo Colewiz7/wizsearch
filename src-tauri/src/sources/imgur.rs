@@ -16,6 +16,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Gif, AssetType::Image, AssetType::Video],
     requires_key: true,
     key_help_url: "https://api.imgur.com/oauth2/addclient",
+    key_hint: "",
     allowed_hosts: &["imgur.com"],
     default_rate_limit_per_min: 30,
     default_enabled: true,

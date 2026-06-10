@@ -18,6 +18,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Audio],
     requires_key: false,
     key_help_url: "",
+    key_hint: "",
     allowed_hosts: &["myinstants.com"],
     default_rate_limit_per_min: 20,
     default_enabled: true,

@@ -17,6 +17,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Image, AssetType::Gif],
     requires_key: false,
     key_help_url: "",
+    key_hint: "",
     allowed_hosts: &["knowyourmeme.com", "kym-cdn.com"],
     default_rate_limit_per_min: 15,
     default_enabled: true,

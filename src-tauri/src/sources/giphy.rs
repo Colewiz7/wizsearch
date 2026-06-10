@@ -16,6 +16,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Gif, AssetType::Sticker],
     requires_key: true,
     key_help_url: "https://developers.giphy.com/dashboard/",
+    key_hint: "GIPHY API key from their developer dashboard. Source is off by default; enable it above once the key is in.",
     allowed_hosts: &["giphy.com"],
     default_rate_limit_per_min: 40,
     default_enabled: false, // opt-in: user flips it on after adding their key

@@ -65,6 +65,37 @@ impl SourceHttp for HostHttp {
             .to_vec();
         Ok(HttpResponse { status, body })
     }
+
+    async fn post_form(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        form: &[(&str, &str)],
+    ) -> Result<HttpResponse, SourceError> {
+        security::validate_source_url(url, self.descriptor)
+            .map_err(|e| SourceError::Network(e.to_string()))?;
+        self.limiter.acquire().await;
+
+        let mut req = self.client.post(url).timeout(self.timeout).header(
+            "User-Agent",
+            concat!("wizsearch/", env!("CARGO_PKG_VERSION")),
+        );
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let resp = req
+            .form(form)
+            .send()
+            .await
+            .map_err(|e| SourceError::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| SourceError::Network(e.to_string()))?
+            .to_vec();
+        Ok(HttpResponse { status, body })
+    }
 }
 
 struct HostContext {

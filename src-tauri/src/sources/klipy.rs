@@ -17,6 +17,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Gif, AssetType::Sticker, AssetType::Video],
     requires_key: true,
     key_help_url: "https://klipy.com/developers",
+    key_hint: "",
     allowed_hosts: &["klipy.com", "klipy.co", "klipy.media"],
     default_rate_limit_per_min: 60,
     default_enabled: true,

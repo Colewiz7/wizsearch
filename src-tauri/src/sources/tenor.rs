@@ -17,6 +17,7 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     asset_types: &[AssetType::Gif, AssetType::Sticker],
     requires_key: true,
     key_help_url: "https://developers.google.com/tenor/guides/quickstart",
+    key_hint: "Free Google Cloud API key with the Tenor API enabled (the old standalone Tenor keys are dead).",
     allowed_hosts: &["tenor.com", "tenor.googleapis.com"],
     default_rate_limit_per_min: 60,
     default_enabled: true,
