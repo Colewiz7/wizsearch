@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { settingsDefs, settingsSet, settingsValues } from "../api/commands";
+import { initStream } from "../api/stream";
 import type { SettingDef } from "../api/types";
 
 interface SettingsCtx {
@@ -29,7 +30,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    Promise.all([settingsDefs(), settingsValues()])
+    Promise.all([settingsDefs(), settingsValues(), initStream()])
       .then(([d, v]) => {
         setDefs(d);
         setValues(v);
@@ -43,7 +44,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  return <Ctx.Provider value={{ defs, values, setValue, ready }}>{children}</Ctx.Provider>;
+  // hold rendering until stream urls can be built
+  return (
+    <Ctx.Provider value={{ defs, values, setValue, ready }}>
+      {ready ? children : null}
+    </Ctx.Provider>
+  );
 }
 
 export function useSettings() {

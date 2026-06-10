@@ -19,7 +19,11 @@ use sources::{klipy::Klipy, myinstants::MyInstants, pexels::Pexels, SearchSource
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_drag::init())
@@ -52,6 +56,18 @@ pub fn run() {
             let search = Arc::new(SearchHost::new(settings.clone(), source_list));
             let client = reqwest::Client::new();
 
+            // loopback media server: webkitgtk's GStreamer path can't read
+            // custom URI schemes, so previews stream over 127.0.0.1 instead
+            let stream_state = Arc::new(preview::StreamState {
+                client: client.clone(),
+                descriptors: search.descriptors(),
+                settings: settings.clone(),
+                default_collection_dir: default_collection_dir.clone(),
+            });
+            let port = settings.i64_or("preview.stream_port", 0).clamp(0, 65535) as u16;
+            let stream = preview::server::start(stream_state, port)
+                .map_err(|e| format!("stream server failed to start: {e}"))?;
+
             let state = AppState {
                 db,
                 settings: settings.clone(),
@@ -59,6 +75,7 @@ pub fn run() {
                 client: client.clone(),
                 app_data: app_data.clone(),
                 default_collection_dir,
+                stream,
             };
             app.manage(state);
 
@@ -97,6 +114,7 @@ pub fn run() {
             commands::sidecars_ensure,
             commands::ytdlp_update,
             commands::asset_path,
+            commands::stream_base,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wizsearch");

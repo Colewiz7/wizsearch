@@ -307,6 +307,13 @@ pub fn build_registry(
             category: "Preview".into(),
             kind: SettingKind::Bool { default: true },
         },
+        SettingDef {
+            key: "preview.stream_port".into(),
+            label: "Preview server port".into(),
+            description: "Loopback port for streaming previews. 0 picks a free port automatically. Needs a restart.".into(),
+            category: "Preview".into(),
+            kind: SettingKind::Int { default: 0, min: 0, max: 65535 },
+        },
         // --- grid ---
         SettingDef {
             key: "grid.tile_min_width".into(),

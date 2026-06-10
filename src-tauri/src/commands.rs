@@ -20,6 +20,7 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub app_data: PathBuf,
     pub default_collection_dir: PathBuf,
+    pub stream: crate::preview::server::StreamServer,
 }
 
 impl AppState {
@@ -61,8 +62,8 @@ pub async fn search_more(
 }
 
 #[tauri::command]
-pub fn sources_list(state: State<'_, AppState>) -> Vec<SourceInfo> {
-    state.search.source_infos()
+pub async fn sources_list(state: State<'_, AppState>) -> CmdResult<Vec<SourceInfo>> {
+    Ok(state.search.source_infos().await)
 }
 
 // ---------- collect ----------
@@ -264,6 +265,21 @@ pub async fn ytdlp_update(state: State<'_, AppState>) -> CmdResult<String> {
 }
 
 // ---------- misc ----------
+
+#[derive(serde::Serialize)]
+pub struct StreamBase {
+    pub base: String,
+    pub token: String,
+}
+
+/// where the frontend should stream media from (loopback server + session token)
+#[tauri::command]
+pub fn stream_base(state: State<'_, AppState>) -> StreamBase {
+    StreamBase {
+        base: format!("http://127.0.0.1:{}", state.stream.port),
+        token: state.stream.token.clone(),
+    }
+}
 
 /// absolute path of a collected asset, for drag-out / copy-path / reveal
 #[tauri::command]

@@ -8,6 +8,7 @@
 //! on Linux). Remote serving forwards Range to the origin and streams back.
 
 pub mod ffmpeg;
+pub mod server;
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;

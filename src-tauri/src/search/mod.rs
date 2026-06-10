@@ -165,37 +165,39 @@ impl SearchHost {
         self.sources.iter().find(|r| r.source.descriptor().id == id)
     }
 
-    pub fn source_infos(&self) -> Vec<SourceInfo> {
-        self.sources
-            .iter()
-            .map(|r| {
-                let d = r.source.descriptor();
-                let has_key = security::secret_get(&security::credential_key(d.id))
-                    .ok()
-                    .flatten()
-                    .is_some();
-                SourceInfo {
-                    id: d.id.to_string(),
-                    name: d.name.to_string(),
-                    homepage: d.homepage.to_string(),
-                    key_help_url: d.key_help_url.to_string(),
-                    asset_types: d.asset_types.to_vec(),
-                    requires_key: d.requires_key,
-                    has_key,
-                    enabled: self
-                        .settings
-                        .bool_or(&format!("sources.{}.enabled", d.id), true),
-                }
-            })
-            .collect()
+    pub async fn source_infos(&self) -> Vec<SourceInfo> {
+        let mut out = Vec::new();
+        for r in &self.sources {
+            let d = r.source.descriptor();
+            let has_key = security::secret_get_async(security::credential_key(d.id))
+                .await
+                .ok()
+                .flatten()
+                .is_some();
+            out.push(SourceInfo {
+                id: d.id.to_string(),
+                name: d.name.to_string(),
+                homepage: d.homepage.to_string(),
+                key_help_url: d.key_help_url.to_string(),
+                asset_types: d.asset_types.to_vec(),
+                requires_key: d.requires_key,
+                has_key,
+                enabled: self
+                    .settings
+                    .bool_or(&format!("sources.{}.enabled", d.id), true),
+            });
+        }
+        out
     }
 
-    fn make_context(&self, reg: &RegisteredSource, timeout: Duration) -> HostContext {
+    async fn make_context(&self, reg: &RegisteredSource, timeout: Duration) -> HostContext {
         let d = reg.source.descriptor();
-        let credential = security::secret_get(&security::credential_key(d.id))
+        let credential = security::secret_get_async(security::credential_key(d.id))
+            .await
             .ok()
             .flatten();
-        let cookies = security::secret_get(&security::cookie_key(d.id))
+        let cookies = security::secret_get_async(security::cookie_key(d.id))
+            .await
             .ok()
             .flatten();
         HostContext {
@@ -260,7 +262,7 @@ impl SearchHost {
                 cursor: None,
                 page_size,
             };
-            let ctx = self.make_context(reg, timeout);
+            let ctx = self.make_context(reg, timeout).await;
             let source = reg.source.clone();
             let host = self.clone();
             let app = app.clone();
@@ -338,7 +340,7 @@ impl SearchHost {
             .ok_or_else(|| SourceError::Parse(format!("unknown source {source_id}")))?;
         let timeout = Duration::from_millis(self.settings.i64_or("search.timeout_ms", 8000) as u64);
         let page_size = self.settings.i64_or("search.page_size", 24) as u32;
-        let ctx = self.make_context(reg, timeout);
+        let ctx = self.make_context(reg, timeout).await;
         let req = SearchRequest {
             query,
             asset_types,

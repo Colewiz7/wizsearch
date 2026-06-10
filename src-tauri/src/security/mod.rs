@@ -51,6 +51,14 @@ pub fn secret_get(name: &str) -> Result<Option<String>, SecurityError> {
     }
 }
 
+/// async-safe read: the secret-service backend blocks on dbus and panics if
+/// called on a tokio runtime thread, so hop to a blocking thread first
+pub async fn secret_get_async(name: String) -> Result<Option<String>, SecurityError> {
+    tokio::task::spawn_blocking(move || secret_get(&name))
+        .await
+        .map_err(|e| SecurityError::Keychain(e.to_string()))?
+}
+
 pub fn secret_clear(name: &str) -> Result<(), SecurityError> {
     match entry(name)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
