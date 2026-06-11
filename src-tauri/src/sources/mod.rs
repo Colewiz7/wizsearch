@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod giphy;
+pub mod imgflip;
 pub mod imgur;
 pub mod klipy;
 pub mod kym;

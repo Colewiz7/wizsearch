@@ -1,8 +1,9 @@
-//! GIPHY — GIFs and stickers, opt-in (disabled by default; the API program is
-//! paid-oriented, but personal keys exist). https://developers.giphy.com
+//! GIPHY — scraped, no key. The API needs a per-user key, but giphy.com's
+//! search page embeds `gifs/<slug>-<id>` links, and GIPHY's media URLs are
+//! derivable from the id (`media.giphy.com/media/<id>/giphy.gif` etc.). So we
+//! scrape the ids and build the media urls. Biggest keyless GIF library.
 
 use async_trait::async_trait;
-use serde_json::Value;
 
 use super::{
     AssetType, FetchPlan, PreviewKind, ResultItem, SearchPage, SearchRequest, SearchSource,
@@ -13,14 +14,14 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     id: "giphy",
     name: "GIPHY",
     homepage: "https://giphy.com",
-    asset_types: &[AssetType::Gif, AssetType::Sticker],
-    requires_key: true,
-    key_help_url: "https://developers.giphy.com/dashboard/",
-    key_hint: "GIPHY API key from their developer dashboard. Source is off by default; enable it above once the key is in.",
+    asset_types: &[AssetType::Gif],
+    requires_key: false,
+    key_help_url: "",
+    key_hint: "",
     allowed_hosts: &["giphy.com"],
-    default_rate_limit_per_min: 40,
-    default_enabled: false, // opt-in: user flips it on after adding their key
-    default_timeout_ms: 8000,
+    default_rate_limit_per_min: 30,
+    default_enabled: true,
+    default_timeout_ms: 10000,
     embedded_credential: "",
 };
 
@@ -37,136 +38,136 @@ impl SearchSource for Giphy {
         ctx: &dyn SourceContext,
         req: &SearchRequest,
     ) -> Result<SearchPage, SourceError> {
-        let wanted = req.wanted(DESCRIPTOR.asset_types);
-        if wanted.is_empty() {
+        if req.wanted(DESCRIPTOR.asset_types).is_empty() {
             return Ok(SearchPage::empty());
         }
-        let key = ctx.credential().ok_or(SourceError::MissingCredential)?;
-
-        let offset: u32 = req
-            .cursor
-            .as_deref()
-            .map(|c| {
-                c.parse()
-                    .map_err(|_| SourceError::Parse("bad cursor".into()))
-            })
-            .transpose()?
-            .unwrap_or(0);
-        let limit = req.page_size.clamp(1, 50);
-
-        let mut items = Vec::new();
-        let mut got_full_page = false;
-        for t in wanted {
-            let endpoint = match t {
-                AssetType::Gif => "gifs",
-                AssetType::Sticker => "stickers",
-                _ => continue,
-            };
-            let url = format!(
-                "https://api.giphy.com/v1/{endpoint}/search?api_key={key}&q={}&limit={limit}&offset={offset}",
-                urlencode(&req.query)
-            );
-            let resp = ctx.http().get(&url, &[]).await?.ok()?;
-            let json = resp.json()?;
-            let page_items = parse_giphy_page(&json, t);
-            got_full_page = got_full_page || page_items.len() as u32 >= limit;
-            items.extend(page_items);
+        // single page; the search page is infinite-scroll with no cheap cursor
+        if req.cursor.is_some() {
+            return Ok(SearchPage::empty());
         }
 
+        let url = format!("https://giphy.com/search/{}", slugify_query(&req.query));
+        let resp = ctx
+            .http()
+            .get(&url, &[("Accept", "text/html")])
+            .await?
+            .ok()?;
+        let html = resp.text()?;
         Ok(SearchPage {
-            items,
-            next_cursor: got_full_page.then(|| (offset + limit).to_string()),
+            items: parse_search(&html),
+            next_cursor: None,
         })
     }
 }
 
-fn parse_giphy_page(json: &Value, asset_type: AssetType) -> Vec<ResultItem> {
-    let Some(rows) = json["data"].as_array() else {
-        return Vec::new();
-    };
+/// "deal with it" -> "deal-with-it" for the /search/<slug> path
+fn slugify_query(q: &str) -> String {
+    let slug: String = q
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let out: String = slug
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if out.is_empty() {
+        "funny".to_string()
+    } else {
+        out
+    }
+}
 
+fn parse_search(html: &str) -> Vec<ResultItem> {
+    let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for row in rows {
-        let Some(id) = row["id"].as_str() else {
+
+    // scan for every `gifs/<slug>-<id>` occurrence (href or embedded json)
+    for (slug, id) in scan_gif_links(html) {
+        if !seen.insert(id.clone()) {
             continue;
+        }
+        let title = if slug.is_empty() {
+            "giphy gif".to_string()
+        } else {
+            slug.replace('-', " ")
         };
-        let title = row["title"]
-            .as_str()
-            .filter(|t| !t.is_empty())
-            .unwrap_or("untitled")
-            .to_string();
-        let images = &row["images"];
-
-        // preview: fixed_width mp4/webp loop; thumb: small still
-        let preview = pick(images, &["fixed_width"], &["mp4", "webp", "url"])
-            .or_else(|| pick(images, &["preview_gif"], &["url"]));
-        let thumb = pick(
-            images,
-            &["fixed_width_small_still", "fixed_width_still"],
-            &["url"],
-        );
-        // collect: the original gif
-        let full = pick(images, &["original"], &["url", "mp4", "webp"]);
-        let Some((full_url, _, _)) = full else {
-            continue;
-        };
-
-        let (preview_url, width, height) = match preview {
-            Some((u, w, h)) => (Some(u), w, h),
-            None => (None, None, None),
-        };
-        let preview_kind = match preview_url.as_deref() {
-            Some(u) if u.contains(".mp4") => PreviewKind::VideoLoop,
-            _ => PreviewKind::AnimatedImage,
-        };
-        let ext = full_url
-            .rsplit('/')
-            .next()
-            .and_then(|f| f.split('?').next())
-            .and_then(|f| f.rsplit('.').next())
-            .unwrap_or("gif")
-            .to_string();
-
         out.push(ResultItem {
             id: format!("giphy:{id}"),
             source: DESCRIPTOR.id.to_string(),
-            asset_type,
+            asset_type: AssetType::Gif,
             title: title.clone(),
-            thumbnail_url: thumb.map(|(u, _, _)| u),
-            preview_stream_url: preview_url,
-            preview_kind,
+            thumbnail_url: Some(format!("https://media.giphy.com/media/{id}/200w.webp")),
+            // hover loops the mp4 (smoother on Linux than a raw gif)
+            preview_stream_url: Some(format!("https://media.giphy.com/media/{id}/giphy.mp4")),
+            preview_kind: PreviewKind::VideoLoop,
             duration_ms: None,
-            width,
-            height,
+            width: None,
+            height: None,
             license: Some("GIPHY content (check originating rights)".to_string()),
-            attribution: row["url"].as_str().map(String::from),
-            origin_url: row["url"].as_str().map(String::from),
+            attribution: Some(format!("https://giphy.com/gifs/{id}")),
+            origin_url: Some(format!("https://giphy.com/gifs/{id}")),
             fetch_plan: FetchPlan::HttpGet {
-                url: full_url,
+                url: format!("https://media.giphy.com/media/{id}/giphy.gif"),
                 headers: vec![],
-                filename_hint: format!("{}.{ext}", safe_slug(&title)),
+                filename_hint: format!("{}.gif", safe_slug(&title)),
             },
         });
     }
     out
 }
 
-/// images.{rendition}.{field} in preference order; "url" is the gif itself
-fn pick(
-    images: &Value,
-    renditions: &[&str],
-    fields: &[&str],
-) -> Option<(String, Option<u32>, Option<u32>)> {
-    for rend in renditions {
-        let r = &images[rend];
-        for field in fields {
-            if let Some(url) = r[field].as_str().filter(|u| !u.is_empty()) {
-                let dim = |k: &str| r[k].as_str().and_then(|v| v.parse::<u32>().ok());
-                return Some((url.to_string(), dim("width"), dim("height")));
+/// pull (slug, id) pairs out of every `gifs/<slug>-<id>` path in the page. The
+/// id is the trailing hyphen segment (>=13 mixed alphanumerics); the slug is the
+/// words before it.
+fn scan_gif_links(html: &str) -> Vec<(String, String)> {
+    let needle = "gifs/";
+    let bytes = html.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = html[i..].find(needle) {
+        let start = i + pos + needle.len();
+        let mut end = start;
+        while end < bytes.len() {
+            let c = bytes[end];
+            if c.is_ascii_alphanumeric() || c == b'-' {
+                end += 1;
+            } else {
+                break;
             }
         }
+        i = end.max(start + 1);
+        let path = &html[start..end];
+        if let Some((slug, id)) = split_slug_id(path) {
+            out.push((slug, id));
+        }
     }
-    None
+    out
+}
+
+/// "ai-cat-funny-CbM0J4DEIqKHsKxYHA" -> ("ai-cat-funny", "CbM0J4DEIqKHsKxYHA")
+fn split_slug_id(path: &str) -> Option<(String, String)> {
+    let id = path.rsplit('-').next()?;
+    // giphy ids are long mixed-case/alnum; require length + at least one
+    // uppercase-or-digit so a lowercase slug word is never mistaken for an id
+    let looks_like_id = id.len() >= 13
+        && id
+            .chars()
+            .any(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && id.chars().all(|c| c.is_ascii_alphanumeric());
+    if !looks_like_id {
+        return None;
+    }
+    let slug = path[..path.len() - id.len()]
+        .trim_end_matches('-')
+        .to_string();
+    Some((slug, id.to_string()))
 }
 
 fn safe_slug(s: &str) -> String {
@@ -188,55 +189,43 @@ fn safe_slug(s: &str) -> String {
     }
 }
 
-fn urlencode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
-    fn parses_giphy_shape() {
-        let payload = json!({
-            "data": [{
-                "id": "xT9IgG50Fb7Mi0prBC",
-                "title": "excited season 4 GIF",
-                "url": "https://giphy.com/gifs/excited-xT9IgG50Fb7Mi0prBC",
-                "images": {
-                    "original": { "url": "https://media2.giphy.com/media/x/giphy.gif", "width": "480", "height": "270" },
-                    "fixed_width": { "url": "https://media2.giphy.com/media/x/200w.gif", "mp4": "https://media2.giphy.com/media/x/200w.mp4", "width": "200", "height": "113" },
-                    "fixed_width_small_still": { "url": "https://media2.giphy.com/media/x/100w_s.gif", "width": "100", "height": "57" }
-                }
-            }]
-        });
-        let items = parse_giphy_page(&payload, AssetType::Gif);
-        assert_eq!(items.len(), 1);
-        let it = &items[0];
+    fn splits_slug_and_id() {
         assert_eq!(
-            it.preview_stream_url.as_deref(),
-            Some("https://media2.giphy.com/media/x/200w.mp4")
+            split_slug_id("ai-cat-funny-meme-boxing-cbm0J4DEIqKHsKxYHA"),
+            Some((
+                "ai-cat-funny-meme-boxing".to_string(),
+                "cbm0J4DEIqKHsKxYHA".to_string()
+            ))
         );
-        assert!(matches!(it.preview_kind, PreviewKind::VideoLoop));
-        match &it.fetch_plan {
-            FetchPlan::HttpGet {
-                url, filename_hint, ..
-            } => {
-                assert_eq!(url, "https://media2.giphy.com/media/x/giphy.gif");
-                assert_eq!(filename_hint, "excited-season-4-gif.gif");
-            }
+        // a plain lowercase word is not an id
+        assert_eq!(split_slug_id("justaword"), None);
+    }
+
+    #[test]
+    fn scrapes_ids_and_builds_media_urls() {
+        let html = r#"
+        <a href="/gifs/ai-cat-funny-meme-boxing-cbm0J4DEIqKHsKxYHA"></a>
+        {"url":"https://giphy.com/gifs/cat-cats-meowtakeover-yWku98eNsMSZOEEWnC"}
+        <a href="/gifs/ai-cat-funny-meme-boxing-cbm0J4DEIqKHsKxYHA"></a>
+        "#;
+        let items = parse_search(html);
+        assert_eq!(items.len(), 2); // deduped the repeat
+        assert_eq!(items[0].title, "ai cat funny meme boxing");
+        match &items[0].fetch_plan {
+            FetchPlan::HttpGet { url, .. } => assert_eq!(
+                url,
+                "https://media.giphy.com/media/cbm0J4DEIqKHsKxYHA/giphy.gif"
+            ),
             _ => panic!("expected HttpGet"),
         }
+        assert_eq!(
+            items[0].preview_stream_url.as_deref(),
+            Some("https://media.giphy.com/media/cbm0J4DEIqKHsKxYHA/giphy.mp4")
+        );
     }
 }

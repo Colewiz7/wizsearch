@@ -16,8 +16,8 @@ use commands::AppState;
 use search::SearchHost;
 use settings::SettingsStore;
 use sources::{
-    giphy::Giphy, imgur::Imgur, klipy::Klipy, kym::Kym, myinstants::MyInstants, pexels::Pexels,
-    tenor::Tenor, ytsearch::YtSearch, SearchSource,
+    giphy::Giphy, imgflip::Imgflip, imgur::Imgur, klipy::Klipy, kym::Kym, myinstants::MyInstants,
+    pexels::Pexels, tenor::Tenor, ytsearch::YtSearch, SearchSource,
 };
 
 pub fn run() {
@@ -44,6 +44,7 @@ pub fn run() {
                 Arc::new(Tenor),
                 Arc::new(Giphy),
                 Arc::new(Imgur),
+                Arc::new(Imgflip),
                 Arc::new(Kym),
                 Arc::new(YtSearch),
                 Arc::new(Pexels),
