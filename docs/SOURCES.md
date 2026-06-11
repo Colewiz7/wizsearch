@@ -23,9 +23,9 @@ Strategy: a few sources done well, shipping NO keys of any kind. Per-user free k
 |---|---|---|---|---|
 | myinstants | scrape | audio | none | No API. Parse search pages for `play('/media/sounds/..')`. License unclear (mostly third-party clips); labeled as such. |
 | KLIPY | API | gif, sticker, video (clips) | per-user free key in URL path | Defensive JSON parsing of `data.data[].file.{size}.{format}`. MP4/WebP previews over raw GIF. |
-| Tenor | API v2 | gif, sticker | per-user free Google Cloud key | v1 is dead; v2 is `tenor.googleapis.com/v2/search` with opaque `pos` cursor. Stickers via `searchfilter=sticker`. |
+| Tenor | scrape | gif | none | Google killed the free Tenor key signup, so we pull the `"results":[...]` JSON the public search page embeds (same shape the API returned). Single page, no cursor. |
 | GIPHY | API | gif, sticker | per-user key, **disabled by default** | Opt-in (`default_enabled: false`); flip it on in Settings after adding a key. |
-| Reddit | OAuth API | gif, image, video, green_screen | per-user free script app (`client_id:client_secret`) | Reddit blocks anonymous JSON (verified live: 403 for every UA/client). App-only `client_credentials` token, then `oauth.reddit.com` search over a comma-separated subreddit list (a setting). GIFs fetch reddit's own mirrors; videos collect via yt-dlp so v.redd.it audio is merged back in. NSFW filtered. |
+| Reddit | public JSON | gif, image, video, green_screen | none | `www.reddit.com/r/<subs>/search.json` over a comma-separated subreddit list (a setting). Reddit 403s datacenter IPs but answers normal desktop clients on residential connections (where the app runs); a browser UA is sent. GIFs fetch reddit's own mirrors; videos collect via yt-dlp so v.redd.it audio is merged back. NSFW filtered. |
 | Imgur | API v3 | gif, image, video | per-user free Client-ID | `gallery/search`; albums unwrap to their first image; `<id>m.jpg` thumbnail trick. |
 | Know Your Meme | scrape | image, gif | none | Image search grid; masonry rendition swapped to `/original/`. Cloudflare may block; that's an error chip. |
 | YouTube | yt-dlp | video | none | Metadata-only discovery (`ytsearchN:` + `--flat-playlist --dump-single-json`) through `ctx.ytdlp_search_json` (host runs the binary, source stays pure). Collect = YtDlp fetch plan. 30s default timeout. |

@@ -1,6 +1,7 @@
-//! Tenor — GIFs and stickers via the v2 API. The old v1 API is dead; v2 runs
-//! behind a free Google Cloud key (enable "Tenor API" in a Google Cloud
-//! project). https://developers.google.com/tenor/guides/quickstart
+//! Tenor — GIFs and stickers, scraped, no key. Google killed the free Tenor
+//! key signup, so instead of the API we pull the `"results":[...]` JSON that
+//! tenor.com's search page embeds (same shape the API returns). Single page;
+//! the public site is infinite-scroll with no cheap cursor.
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -14,14 +15,14 @@ static DESCRIPTOR: SourceDescriptor = SourceDescriptor {
     id: "tenor",
     name: "Tenor",
     homepage: "https://tenor.com",
-    asset_types: &[AssetType::Gif, AssetType::Sticker],
-    requires_key: true,
-    key_help_url: "https://developers.google.com/tenor/guides/quickstart",
-    key_hint: "Free Google Cloud API key with the Tenor API enabled (the old standalone Tenor keys are dead).",
-    allowed_hosts: &["tenor.com", "tenor.googleapis.com"],
-    default_rate_limit_per_min: 60,
+    asset_types: &[AssetType::Gif],
+    requires_key: false,
+    key_help_url: "",
+    key_hint: "",
+    allowed_hosts: &["tenor.com"],
+    default_rate_limit_per_min: 30,
     default_enabled: true,
-    default_timeout_ms: 8000,
+    default_timeout_ms: 10000,
     embedded_credential: "",
 };
 
@@ -38,47 +39,95 @@ impl SearchSource for Tenor {
         ctx: &dyn SourceContext,
         req: &SearchRequest,
     ) -> Result<SearchPage, SourceError> {
-        let wanted = req.wanted(DESCRIPTOR.asset_types);
-        if wanted.is_empty() {
+        if req.wanted(DESCRIPTOR.asset_types).is_empty() {
             return Ok(SearchPage::empty());
         }
-        let key = ctx.credential().ok_or(SourceError::MissingCredential)?;
-
-        // stickers are a search filter, not a separate endpoint
-        let sticker_only = wanted == [AssetType::Sticker];
-        let asset_type = if sticker_only {
-            AssetType::Sticker
-        } else {
-            AssetType::Gif
-        };
-
-        let mut url = format!(
-            "https://tenor.googleapis.com/v2/search?key={key}&q={}&limit={}&media_filter=gif,tinygif,mp4,tinymp4,webp,tinywebp",
-            urlencode(&req.query),
-            req.page_size.clamp(1, 50),
-        );
-        if sticker_only {
-            url.push_str("&searchfilter=sticker");
-        }
-        // tenor pages with an opaque pos string, exactly our cursor model
-        if let Some(pos) = &req.cursor {
-            url.push_str(&format!("&pos={}", urlencode(pos)));
+        // single page only; no cursor to follow on the scraped page
+        if req.cursor.is_some() {
+            return Ok(SearchPage::empty());
         }
 
-        let resp = ctx.http().get(&url, &[]).await?.ok()?;
-        let json = resp.json()?;
-        let items = parse_tenor_page(&json, asset_type);
-        let next_cursor = json["next"]
-            .as_str()
-            .filter(|s| !s.is_empty() && !items.is_empty())
-            .map(String::from);
+        let slug = slugify_query(&req.query);
+        let url = format!("https://tenor.com/search/{slug}-gifs");
+        let resp = ctx
+            .http()
+            .get(&url, &[("Accept", "text/html")])
+            .await?
+            .ok()?;
+        let html = resp.text()?;
 
-        Ok(SearchPage { items, next_cursor })
+        // pull the embedded results array and parse it like an API response
+        let results = extract_results(&html)
+            .ok_or_else(|| SourceError::Parse("no results json on tenor page".into()))?;
+        Ok(SearchPage {
+            items: parse_tenor_page(&results, AssetType::Gif),
+            next_cursor: None,
+        })
     }
 }
 
-fn parse_tenor_page(json: &Value, asset_type: AssetType) -> Vec<ResultItem> {
-    let Some(results) = json["results"].as_array() else {
+/// "deal with it" -> "deal-with-it" for the /search/<slug>-gifs path
+fn slugify_query(q: &str) -> String {
+    let slug: String = q
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let out: String = slug
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if out.is_empty() {
+        "funny".to_string()
+    } else {
+        out
+    }
+}
+
+/// find `"results":[ ... ]` in the page and return it as a parsed JSON array,
+/// matching brackets while respecting strings and escapes
+fn extract_results(html: &str) -> Option<Value> {
+    let needle = "\"results\":[";
+    let start = html.find(needle)? + needle.len() - 1; // point at the '['
+    let bytes = html.as_bytes();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut escaped = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'[' | b'{' => depth += 1,
+            b']' | b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let arr = &html[start..=i];
+                    return serde_json::from_str::<Value>(arr).ok();
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_tenor_page(results: &Value, asset_type: AssetType) -> Vec<ResultItem> {
+    let Some(results) = results.as_array() else {
         return Vec::new();
     };
 
@@ -188,41 +237,43 @@ fn safe_slug(s: &str) -> String {
     }
 }
 
-fn urlencode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     #[test]
+    fn slugifies_queries() {
+        assert_eq!(slugify_query("deal with it"), "deal-with-it");
+        assert_eq!(slugify_query("  spongebob!! "), "spongebob");
+        assert_eq!(slugify_query(""), "funny");
+    }
+
+    #[test]
+    fn extracts_embedded_results_array() {
+        // mimics tenor's page: results array buried in a larger script blob,
+        // with trailing json after it and a nested object inside
+        let html = r#"<script>window.__X = {"foo":1,"results":[{"id":"7","title":"hi","media_formats":{"gif":{"url":"https://media.tenor.com/x.gif","dims":[1,2]}}}],"next":"abc"};</script>"#;
+        let results = extract_results(html).expect("should find results array");
+        let items = parse_tenor_page(&results, AssetType::Gif);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "tenor:7");
+    }
+
+    #[test]
     fn parses_tenor_shape() {
-        let payload = json!({
-            "results": [{
-                "id": "16989471141791455574",
-                "title": "",
-                "content_description": "Confused Math GIF",
-                "itemurl": "https://tenor.com/view/confused-math-gif-16989471141791455574",
-                "media_formats": {
-                    "gif": { "url": "https://media.tenor.com/full.gif", "dims": [498, 280] },
-                    "tinymp4": { "url": "https://media.tenor.com/tiny.mp4", "dims": [220, 124], "duration": 2.5 },
-                    "tinygif": { "url": "https://media.tenor.com/tiny.gif", "dims": [220, 124] }
-                }
-            }],
-            "next": "CAgQ0u4"
-        });
+        // the extracted value is the results array itself
+        let payload = json!([{
+            "id": "16989471141791455574",
+            "title": "",
+            "content_description": "Confused Math GIF",
+            "itemurl": "https://tenor.com/view/confused-math-gif-16989471141791455574",
+            "media_formats": {
+                "gif": { "url": "https://media.tenor.com/full.gif", "dims": [498, 280] },
+                "tinymp4": { "url": "https://media.tenor.com/tiny.mp4", "dims": [220, 124], "duration": 2.5 },
+                "tinygif": { "url": "https://media.tenor.com/tiny.gif", "dims": [220, 124] }
+            }
+        }]);
         let items = parse_tenor_page(&payload, AssetType::Gif);
         assert_eq!(items.len(), 1);
         let it = &items[0];

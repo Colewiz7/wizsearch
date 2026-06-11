@@ -23,6 +23,12 @@ use rate_limit::RateLimiter;
 
 pub const EVENT_SEARCH_UPDATE: &str = "search://update";
 
+// A browser-like UA so the scrape sources (tenor, kym, myinstants) and reddit's
+// public json answer us instead of serving a bot wall. Requests go out from the
+// user's own machine, so this is honest about being a normal desktop client.
+pub const USER_AGENT: &str =
+    "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
+
 // ---------- the context handed to sources ----------
 
 struct HostHttp {
@@ -42,10 +48,11 @@ impl SourceHttp for HostHttp {
         // rate limit is enforced here, inside the only client sources have
         self.limiter.acquire().await;
 
-        let mut req = self.client.get(url).timeout(self.timeout).header(
-            "User-Agent",
-            concat!("wizsearch/", env!("CARGO_PKG_VERSION")),
-        );
+        let mut req = self
+            .client
+            .get(url)
+            .timeout(self.timeout)
+            .header("User-Agent", USER_AGENT);
         for (k, v) in headers {
             req = req.header(*k, *v);
         }
@@ -76,10 +83,11 @@ impl SourceHttp for HostHttp {
             .map_err(|e| SourceError::Network(e.to_string()))?;
         self.limiter.acquire().await;
 
-        let mut req = self.client.post(url).timeout(self.timeout).header(
-            "User-Agent",
-            concat!("wizsearch/", env!("CARGO_PKG_VERSION")),
-        );
+        let mut req = self
+            .client
+            .post(url)
+            .timeout(self.timeout)
+            .header("User-Agent", USER_AGENT);
         for (k, v) in headers {
             req = req.header(*k, *v);
         }
