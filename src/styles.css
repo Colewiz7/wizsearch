@@ -112,6 +112,28 @@ body {
 
 .search-bar-row {
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  height: 40px;
+}
+
+.volume-icon {
+  font-size: 14px;
+}
+
+.volume-control input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent);
 }
 
 .search-input {
@@ -162,6 +184,22 @@ body {
   padding: 2px 8px;
   border-radius: 6px;
   background: var(--bg-raised);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.source-status:disabled {
+  cursor: default;
+}
+
+.source-status:not(:disabled):hover {
+  border-color: var(--border);
+}
+
+.source-active {
+  border-color: var(--accent) !important;
+  color: var(--text);
 }
 
 .status-error,
