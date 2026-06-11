@@ -392,18 +392,6 @@ pub fn build_registry(
                 max: 120000,
             },
         });
-        if d.id == "reddit" {
-            defs.push(SettingDef {
-                key: "sources.reddit.subreddits".into(),
-                label: "Subreddits to search".into(),
-                description: "Comma-separated list of subreddits Reddit searches across.".into(),
-                category: "Sources".into(),
-                kind: SettingKind::Text {
-                    default: crate::sources::reddit::DEFAULT_SUBREDDITS.into(),
-                    placeholder: "memes,gifs,reactiongifs".into(),
-                },
-            });
-        }
         defs.push(SettingDef {
             key: format!("sources.{}.rate_limit_per_min", d.id),
             label: format!("{} rate limit (req/min)", d.name),

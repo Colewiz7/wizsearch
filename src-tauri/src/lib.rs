@@ -17,7 +17,7 @@ use search::SearchHost;
 use settings::SettingsStore;
 use sources::{
     giphy::Giphy, imgur::Imgur, klipy::Klipy, kym::Kym, myinstants::MyInstants, pexels::Pexels,
-    reddit::Reddit, tenor::Tenor, ytsearch::YtSearch, SearchSource,
+    tenor::Tenor, ytsearch::YtSearch, SearchSource,
 };
 
 pub fn run() {
@@ -43,7 +43,6 @@ pub fn run() {
                 Arc::new(Klipy),
                 Arc::new(Tenor),
                 Arc::new(Giphy),
-                Arc::new(Reddit),
                 Arc::new(Imgur),
                 Arc::new(Kym),
                 Arc::new(YtSearch),

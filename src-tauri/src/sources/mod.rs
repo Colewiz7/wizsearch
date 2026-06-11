@@ -14,7 +14,6 @@ pub mod klipy;
 pub mod kym;
 pub mod myinstants;
 pub mod pexels;
-pub mod reddit;
 pub mod tenor;
 pub mod ytsearch;
 
@@ -215,8 +214,8 @@ pub trait SourceContext: Send + Sync {
     fn http(&self) -> &dyn SourceHttp;
     /// per-user credential from the OS keychain, read-only. None if unset.
     fn credential(&self) -> Option<String>;
-    /// read-only access to this source's own settings: config("subreddits")
-    /// reads sources.<id>.subreddits from the registry
+    /// read-only access to this source's own settings: config("foo") reads
+    /// sources.<id>.foo from the registry
     fn config(&self, key: &str) -> Option<String>;
     /// metadata-only yt-dlp search (`ytsearchN:`), run by the host. Returns the
     /// --dump-single-json output. Sources never touch the binary themselves.
