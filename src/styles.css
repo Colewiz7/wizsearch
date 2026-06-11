@@ -169,6 +169,10 @@ body {
   color: var(--warn);
 }
 
+.status-needs_key {
+  opacity: 0.6;
+}
+
 .status-disabled {
   opacity: 0.5;
   text-decoration: line-through;

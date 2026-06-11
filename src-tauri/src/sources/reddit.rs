@@ -1,6 +1,6 @@
-//! Reddit — meme subs via the public search JSON, no key. Reddit blocks
-//! datacenter IPs but answers normal desktop clients on residential
-//! connections, which is where this app runs. Subreddit list is a setting
+//! Reddit — meme subs via the public search JSON, no key. Reddit 403s
+//! fake-browser UAs, so we send a unique descriptive UA (their documented
+//! ask for keyless clients). Subreddit list is a setting
 //! (sources.reddit.subreddits). GIFs/images fetch reddit's own mirrors; videos
 //! collect through yt-dlp so the separate v.redd.it audio track is merged back.
 
@@ -73,7 +73,21 @@ impl SearchSource for Reddit {
             url.push_str(&format!("&after={}", urlencode(after)));
         }
 
-        let resp = ctx.http().get(&url, &[]).await?.ok()?;
+        // reddit blocks fake-browser UAs; it wants a unique descriptive one
+        let resp = ctx
+            .http()
+            .get(
+                &url,
+                &[
+                    (
+                        "User-Agent",
+                        "linux:wizsearch:0.1.0 (open-source meme finder)",
+                    ),
+                    ("Accept", "application/json"),
+                ],
+            )
+            .await?
+            .ok()?;
         let json = resp.json()?;
         let items = parse_listing(&json, &req.wanted(DESCRIPTOR.asset_types));
         let next_cursor = json["data"]["after"]

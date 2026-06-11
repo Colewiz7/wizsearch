@@ -34,7 +34,7 @@ export interface SearchPage {
 
 export interface SourceStatus {
   id: string;
-  state: "pending" | "done" | "error" | "disabled" | "timeout";
+  state: "pending" | "done" | "error" | "disabled" | "timeout" | "needs_key";
   error: string | null;
   count: number;
   next_cursor: string | null;

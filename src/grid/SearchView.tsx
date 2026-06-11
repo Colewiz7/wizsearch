@@ -160,10 +160,15 @@ export function SearchView() {
         ))}
         <span className="spacer" />
         {statuses.map((s) => (
-          <span key={s.id} className={`source-status status-${s.state}`} title={s.error ?? ""}>
+          <span
+            key={s.id}
+            className={`source-status status-${s.state}`}
+            title={s.state === "needs_key" ? "add a key in Settings" : s.error ?? ""}
+          >
             {s.id}
             {s.state === "pending" && "…"}
             {s.state === "done" && ` ${s.count}`}
+            {s.state === "needs_key" && " 🔑"}
             {(s.state === "error" || s.state === "timeout") && " ⚠"}
           </span>
         ))}

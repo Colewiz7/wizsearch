@@ -48,12 +48,22 @@ impl SourceHttp for HostHttp {
         // rate limit is enforced here, inside the only client sources have
         self.limiter.acquire().await;
 
+        // a source may override the UA (reddit wants a unique descriptive one,
+        // not a browser string); otherwise use the shared browser UA
+        let ua = headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+            .map(|(_, v)| *v)
+            .unwrap_or(USER_AGENT);
         let mut req = self
             .client
             .get(url)
             .timeout(self.timeout)
-            .header("User-Agent", USER_AGENT);
+            .header("User-Agent", ua);
         for (k, v) in headers {
+            if k.eq_ignore_ascii_case("user-agent") {
+                continue; // already applied
+            }
             req = req.header(*k, *v);
         }
         if let Some(c) = &self.cookies {
@@ -368,9 +378,15 @@ impl SearchHost {
                 // failure isolation: one source's error/timeout never touches the rest
                 let (state, error, items, next_cursor) = match outcome {
                     Ok(Ok(page)) => ("done", None, page.items, page.next_cursor),
+                    // no key set is not an error; it's a "go add one" nudge
+                    Ok(Err(SourceError::MissingCredential)) => ("needs_key", None, vec![], None),
                     Ok(Err(e)) => ("error", Some(e.to_string()), vec![], None),
                     Err(_) => ("timeout", Some("timed out".to_string()), vec![], None),
                 };
+                match &error {
+                    Some(e) => log::warn!("source {source_id}: {state}: {e}"),
+                    None => log::info!("source {source_id}: {} results", items.len()),
+                }
                 if host.generation.load(Ordering::SeqCst) != search_id {
                     return; // superseded by a newer search
                 }

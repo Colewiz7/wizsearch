@@ -73,37 +73,40 @@ impl SearchSource for Kym {
 fn parse_image_search(html: &str, wanted: &[AssetType]) -> Vec<ResultItem> {
     let doc = Html::parse_document(html);
     // result tiles: <a class="photo" href="/photos/123-slug"><img src=".../masonry/..." ...>
-    let link_sel = Selector::parse("a.photo").expect("static selector");
+    // result cards: <a class="result|wide-card" href="/memes/slug"><img
+    //   src=".../entries/icons/newsfeed/...jpg" src-large=".../original/...">
+    let link_sel = Selector::parse("a.result, a.wide-card").expect("static selector");
     let img_sel = Selector::parse("img").expect("static selector");
 
     let mut out = Vec::new();
     for link in doc.select(&link_sel) {
         let href = link.value().attr("href").unwrap_or_default();
+        if href.is_empty() {
+            continue;
+        }
         let Some(img) = link.select(&img_sel).next() else {
             continue;
         };
-        let Some(src) = img
-            .value()
-            .attr("data-src")
-            .or_else(|| img.value().attr("src"))
-        else {
+        let attr = |name| img.value().attr(name).filter(|s| s.contains("kym-cdn.com"));
+        // thumbnail = the small newsfeed src; full = the original rendition
+        let Some(src) = attr("src").or_else(|| attr("data-src")) else {
             continue;
         };
-        if !src.contains("kym-cdn.com") {
-            continue;
-        }
         let title = img
             .value()
             .attr("alt")
-            .or_else(|| img.value().attr("title"))
             .unwrap_or("meme image")
             .trim()
+            .trim_end_matches(" meme example images.")
+            .trim_end_matches(" meme and image examples.")
             .to_string();
 
-        // masonry/newsfeed renditions swap to the original full-size file
-        let full = src
-            .replace("/masonry/", "/original/")
-            .replace("/newsfeed/", "/original/");
+        // prefer the explicit large rendition; else lift newsfeed -> original
+        let full = attr("src-large").map(String::from).unwrap_or_else(|| {
+            src.replace("/masonry/", "/original/")
+                .replace("/newsfeed/", "/original/")
+                .replace("/mobile/", "/original/")
+        });
         let ext = ext_of(&full, "jpg");
         let is_gif = ext.eq_ignore_ascii_case("gif");
         let asset_type = if is_gif {
@@ -196,29 +199,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_photo_grid() {
+    fn parses_result_cards() {
+        // current kym markup: result/wide-card anchors with src-large originals
         let html = r#"
         <html><body>
-          <a class="photo" href="/photos/123-stonks">
-            <img src="https://i.kym-cdn.com/photos/images/masonry/000/123/456/stonks.jpg" alt="Stonks" />
+          <a class="wide-card" href="/memes/stonks">
+            <img alt="Stonks meme example images."
+                 src-large="https://i.kym-cdn.com/entries/icons/original/000/123/456/stonks.jpg"
+                 src="https://i.kym-cdn.com/entries/icons/newsfeed/000/123/456/stonks.jpg" />
           </a>
-          <a class="photo" href="/photos/789-dancing">
-            <img data-src="https://i.kym-cdn.com/photos/images/masonry/000/789/000/dance.gif" alt="Dancing" />
+          <a class="result" href="/memes/loss">
+            <img alt="Loss meme and image examples."
+                 src="https://i.kym-cdn.com/entries/icons/newsfeed/000/789/000/loss.jpg" />
           </a>
+          <a class="result" href="/users/someone"><img src="https://example.com/x.png" alt="not cdn" /></a>
         </body></html>"#;
         let items = parse_image_search(html, &AssetType::ALL);
-        assert_eq!(items.len(), 2);
-        assert!(matches!(items[0].asset_type, AssetType::Image));
+        assert_eq!(items.len(), 2); // the non-cdn one is skipped
+        assert_eq!(items[0].title, "Stonks");
         match &items[0].fetch_plan {
-            FetchPlan::HttpGet { url, .. } => {
-                assert_eq!(
-                    url,
-                    "https://i.kym-cdn.com/photos/images/original/000/123/456/stonks.jpg"
-                )
-            }
+            FetchPlan::HttpGet { url, .. } => assert_eq!(
+                url,
+                "https://i.kym-cdn.com/entries/icons/original/000/123/456/stonks.jpg"
+            ),
             _ => panic!("expected HttpGet"),
         }
-        assert!(matches!(items[1].asset_type, AssetType::Gif));
-        assert!(matches!(items[1].preview_kind, PreviewKind::AnimatedImage));
+        // second has no src-large, so newsfeed is lifted to original
+        match &items[1].fetch_plan {
+            FetchPlan::HttpGet { url, .. } => assert!(url.contains("/original/")),
+            _ => panic!("expected HttpGet"),
+        }
     }
 }
