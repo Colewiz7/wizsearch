@@ -61,7 +61,7 @@ the UI; you are responsible for honoring them in your projects.
 
 ## Contributing
 Read `CLAUDE.md` and `/docs` first. New tunables go in the settings registry; new
-sources implement `SearchSource` (see `docs/SOURCES.md` for the checklist).
+sources implement `SearchSource`.
 
 ## License
 MIT (see `LICENSE`).
