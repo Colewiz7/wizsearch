@@ -60,8 +60,7 @@ creator-disabled content. Licenses and attribution are captured per item and sho
 the UI; you are responsible for honoring them in your projects.
 
 ## Contributing
-Read `CLAUDE.md` and `/docs` first. New tunables go in the settings registry; new
-sources implement `SearchSource`.
+New tunables go in the settings registry; new sources implement `SearchSource`.
 
 ## License
 MIT (see `LICENSE`).
